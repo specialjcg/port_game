@@ -1,0 +1,155 @@
+// Game orchestration layer - High-level game logic
+
+use uuid::Uuid;
+
+use crate::domain::aggregates::Port;
+use crate::domain::events::{DomainEvent, EventMetadata};
+use crate::domain::value_objects::{PlayerId, ShipId};
+use crate::infrastructure::{EventStore, InMemoryEventStore};
+use crate::mcts::{MCTSConfig, MCTSEngine};
+
+/// Game mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameMode {
+    VersusAI,  // Player vs AI MCTS
+    Tutorial,  // Learning mode
+    Sandbox,   // Free play
+}
+
+/// Game session - Main game state manager
+pub struct GameSession {
+    pub session_id: Uuid,
+    pub mode: GameMode,
+    pub player_port: Port,
+    pub ai_port: Port,
+    pub current_turn: u32,
+    pub current_player: PlayerId,
+    pub mcts_engine: MCTSEngine,
+    pub event_store: InMemoryEventStore,
+}
+
+impl GameSession {
+    pub fn new(mode: GameMode, player_id: PlayerId, ai_id: PlayerId) -> Self {
+        let session_id = Uuid::new_v4();
+
+        // Simple configuration: 2 berths, 2 cranes
+        let player_port = Port::new(player_id, 2, 2);
+        let ai_port = Port::new(ai_id, 2, 2);
+
+        let mcts_config = MCTSConfig {
+            num_simulations: 100, // Small for MVP
+            exploration_constant: 1.41,
+            max_depth: 20,
+        };
+
+        let mcts_engine = MCTSEngine::new(mcts_config);
+        let mut event_store = InMemoryEventStore::new();
+
+        // Emit GameStarted event
+        let start_event = DomainEvent::GameStarted {
+            metadata: EventMetadata::new(session_id, 1),
+            player_id,
+            ai_player_id: ai_id,
+            num_berths: 2,
+            num_cranes: 2,
+        };
+
+        event_store.append(session_id, vec![start_event]).ok();
+
+        Self {
+            session_id,
+            mode,
+            player_port,
+            ai_port,
+            current_turn: 0,
+            current_player: player_id,
+            mcts_engine,
+            event_store,
+        }
+    }
+
+    pub fn start_turn(&mut self) {
+        self.current_turn += 1;
+
+        let event = DomainEvent::TurnStarted {
+            metadata: EventMetadata::new(self.session_id, self.current_turn as u64),
+            turn_number: self.current_turn,
+            current_player: self.current_player,
+        };
+
+        self.event_store.append(self.session_id, vec![event]).ok();
+    }
+
+    pub fn spawn_ships(&mut self, count: usize) {
+        let mut events = Vec::new();
+
+        for i in 0..count {
+            let ship_id = ShipId::new(self.current_turn as usize * 10 + i);
+            let containers = 20 + (i * 10) as u32; // Varying sizes
+
+            let event = DomainEvent::ShipArrived {
+                metadata: EventMetadata::new(self.session_id, self.player_port.version() + 1),
+                ship_id,
+                container_count: containers,
+                arrival_time: self.current_turn as f64,
+            };
+
+            events.push(event.clone());
+            self.player_port.apply_event(&event);
+            self.ai_port.apply_event(&event);
+        }
+
+        self.event_store.append(self.session_id, events).ok();
+    }
+
+    pub fn get_player_port(&self) -> &Port {
+        &self.player_port
+    }
+
+    pub fn get_ai_port(&self) -> &Port {
+        &self.ai_port
+    }
+
+    pub fn export_replay(&self) -> Result<String, String> {
+        self.event_store.export_to_json(self.session_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_game_session_creation() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+
+        let session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+        assert_eq!(session.mode, GameMode::VersusAI);
+        assert_eq!(session.current_turn, 0);
+    }
+
+    #[test]
+    fn test_spawn_ships() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+
+        let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+        session.spawn_ships(2);
+
+        assert_eq!(session.player_port.ships.len(), 2);
+        assert_eq!(session.ai_port.ships.len(), 2);
+    }
+
+    #[test]
+    fn test_event_export() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+
+        let session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+        let json = session.export_replay();
+
+        assert!(json.is_ok());
+    }
+}
