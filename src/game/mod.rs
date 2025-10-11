@@ -1,5 +1,7 @@
 // Game orchestration layer - High-level game logic
 
+pub mod events;
+
 use uuid::Uuid;
 
 use crate::domain::aggregates::Port;
@@ -7,6 +9,8 @@ use crate::domain::events::{DomainEvent, EventMetadata};
 use crate::domain::value_objects::{PlayerId, ShipId};
 use crate::infrastructure::{EventStore, InMemoryEventStore};
 use crate::mcts::{MCTSConfig, MCTSEngine};
+
+pub use events::{ActiveEvent, EventGenerator, RandomEvent};
 
 /// Game mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +30,9 @@ pub struct GameSession {
     pub current_player: PlayerId,
     pub mcts_engine: MCTSEngine,
     pub event_store: InMemoryEventStore,
+    pub event_generator: EventGenerator,
+    pub active_events: Vec<ActiveEvent>,
+    pub crane_efficiency_modifier: f64, // 1.0 = normal, <1.0 = penalty, >1.0 = bonus
 }
 
 impl GameSession {
@@ -65,6 +72,9 @@ impl GameSession {
             current_player: player_id,
             mcts_engine,
             event_store,
+            event_generator: EventGenerator::default(),
+            active_events: Vec::new(),
+            crane_efficiency_modifier: 1.0,
         }
     }
 
@@ -171,7 +181,8 @@ impl GameSession {
         for ship in self.player_port.docked_ships() {
             if !ship.assigned_cranes.is_empty() {
                 let crane_count = ship.assigned_cranes.len() as u32;
-                let process_amount = crane_count * 10; // Each crane processes 10 containers
+                let base_amount = crane_count * 10; // Each crane processes 10 containers
+                let process_amount = (base_amount as f64 * self.crane_efficiency_modifier) as u32;
 
                 if ship.containers_remaining > 0 {
                     let processed = process_amount.min(ship.containers_remaining);
@@ -200,7 +211,8 @@ impl GameSession {
         for ship in self.ai_port.docked_ships() {
             if !ship.assigned_cranes.is_empty() {
                 let crane_count = ship.assigned_cranes.len() as u32;
-                let process_amount = crane_count * 10;
+                let base_amount = crane_count * 10;
+                let process_amount = (base_amount as f64 * self.crane_efficiency_modifier) as u32;
 
                 if ship.containers_remaining > 0 {
                     let processed = process_amount.min(ship.containers_remaining);
@@ -289,6 +301,66 @@ impl GameSession {
         } else {
             Some("tie")
         }
+    }
+
+    /// Process random events
+    pub fn process_random_events(&mut self) -> Vec<RandomEvent> {
+        let mut new_events = Vec::new();
+
+        // Update active events
+        self.active_events.retain_mut(|active| {
+            let expired = active.tick();
+            !expired
+        });
+
+        // Reset modifiers
+        self.crane_efficiency_modifier = 1.0;
+
+        // Apply active event effects
+        for active in &self.active_events {
+            match &active.event {
+                RandomEvent::Storm { efficiency_penalty, .. } => {
+                    self.crane_efficiency_modifier *= 1.0 - efficiency_penalty;
+                }
+                RandomEvent::GoodWeather { efficiency_bonus, .. } => {
+                    self.crane_efficiency_modifier *= 1.0 + efficiency_bonus;
+                }
+                _ => {}
+            }
+        }
+
+        // Generate new event
+        if let Some(event) = self.event_generator.generate() {
+            match &event {
+                RandomEvent::RushHour { extra_ships } => {
+                    self.spawn_ships(*extra_ships);
+                }
+                RandomEvent::CustomsInspection { .. } => {
+                    // Instant effect - handled in display
+                }
+                _ => {
+                    // Add to active events
+                    self.active_events.push(ActiveEvent::new(event.clone()));
+                }
+            }
+            new_events.push(event);
+        }
+
+        new_events
+    }
+
+    /// Get description of active effects
+    pub fn get_active_effects_description(&self) -> Vec<String> {
+        self.active_events
+            .iter()
+            .map(|active| {
+                format!(
+                    "{} ({}  turns left)",
+                    active.event.description(),
+                    active.turns_remaining
+                )
+            })
+            .collect()
     }
 }
 

@@ -107,8 +107,33 @@ fn main() {
             }
         }
 
+        // Process random events
+        let new_events = session.process_random_events();
+        if !new_events.is_empty() {
+            println!("\n⚠️  RANDOM EVENT!");
+            for event in &new_events {
+                println!("   {}", event.description());
+            }
+            wait_for_enter();
+        }
+
+        // Show active effects
+        let active_effects = session.get_active_effects_description();
+        if !active_effects.is_empty() {
+            println!("\n📋 Active Effects:");
+            for effect in active_effects {
+                println!("   • {}", effect);
+            }
+        }
+
         // Process containers
         println!("\n🔄 Processing containers...");
+        if session.crane_efficiency_modifier != 1.0 {
+            println!(
+                "   Crane efficiency: {:.0}%",
+                session.crane_efficiency_modifier * 100.0
+            );
+        }
         session.process_containers();
 
         // AI turn
