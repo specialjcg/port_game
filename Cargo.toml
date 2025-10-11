@@ -3,6 +3,9 @@ name = "port_game"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
@@ -10,5 +13,22 @@ serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
+# WebAssembly dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["console"] }
+js-sys = { version = "0.3", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.2", features = ["js"] }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+wasm-bindgen-test = "0.3"
+
+[features]
+default = []
+wasm = ["wasm-bindgen", "web-sys", "js-sys", "serde-wasm-bindgen", "console_error_panic_hook"]
+
+[profile.release]
+opt-level = "s"  # Optimize for size in WASM
+lto = true       # Link-time optimization

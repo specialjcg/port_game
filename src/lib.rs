@@ -8,6 +8,9 @@ pub mod game;        // Game-specific orchestration
 pub mod mcts;        // Monte Carlo Tree Search engine
 pub mod cli;         // Command-line interface
 
+#[cfg(feature = "wasm")]
+pub mod wasm;        // WebAssembly bindings
+
 // Re-exports for convenience
 pub use domain::events::DomainEvent;
 pub use application::commands::Command;
