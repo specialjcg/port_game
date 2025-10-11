@@ -6,6 +6,7 @@ pub mod application; // Use cases, command/query handlers
 pub mod infrastructure; // Event store, persistence, external adapters
 pub mod game;        // Game-specific orchestration
 pub mod mcts;        // Monte Carlo Tree Search engine
+pub mod cli;         // Command-line interface
 
 // Re-exports for convenience
 pub use domain::events::DomainEvent;

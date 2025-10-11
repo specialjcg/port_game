@@ -113,6 +113,183 @@ impl GameSession {
     pub fn export_replay(&self) -> Result<String, String> {
         self.event_store.export_to_json(self.session_id)
     }
+
+    /// Player docks a ship
+    pub fn player_dock_ship(
+        &mut self,
+        ship_id: ShipId,
+        berth_id: crate::domain::value_objects::BerthId,
+    ) -> Result<(), String> {
+        use crate::application::handlers::handle_dock_ship_command;
+
+        let events = handle_dock_ship_command(
+            &self.player_port,
+            self.session_id,
+            ship_id,
+            berth_id,
+            self.player_port.player_id,
+        )?;
+
+        for event in &events {
+            self.player_port.apply_event(event);
+        }
+
+        self.event_store.append(self.session_id, events).ok();
+        Ok(())
+    }
+
+    /// Player assigns crane
+    pub fn player_assign_crane(
+        &mut self,
+        crane_id: crate::domain::value_objects::CraneId,
+        ship_id: ShipId,
+    ) -> Result<(), String> {
+        use crate::application::handlers::handle_assign_crane_command;
+
+        let events = handle_assign_crane_command(
+            &self.player_port,
+            self.session_id,
+            crane_id,
+            ship_id,
+            self.player_port.player_id,
+        )?;
+
+        for event in &events {
+            self.player_port.apply_event(event);
+        }
+
+        self.event_store.append(self.session_id, events).ok();
+        Ok(())
+    }
+
+    /// Process containers for all docked ships with assigned cranes
+    pub fn process_containers(&mut self) {
+        use crate::domain::events::DomainEvent;
+
+        // Player port
+        let mut events = Vec::new();
+        for ship in self.player_port.docked_ships() {
+            if !ship.assigned_cranes.is_empty() {
+                let crane_count = ship.assigned_cranes.len() as u32;
+                let process_amount = crane_count * 10; // Each crane processes 10 containers
+
+                if ship.containers_remaining > 0 {
+                    let processed = process_amount.min(ship.containers_remaining);
+                    let remaining = ship.containers_remaining - processed;
+
+                    let event = DomainEvent::ContainerProcessed {
+                        metadata: EventMetadata::new(self.session_id, self.player_port.version() + 1),
+                        crane_id: ship.assigned_cranes[0], // Representative crane
+                        ship_id: ship.id,
+                        containers_remaining: remaining,
+                    };
+
+                    events.push(event);
+                }
+            }
+        }
+
+        for event in &events {
+            self.player_port.apply_event(event);
+        }
+
+        self.event_store.append(self.session_id, events).ok();
+
+        // AI port (same logic)
+        let mut events = Vec::new();
+        for ship in self.ai_port.docked_ships() {
+            if !ship.assigned_cranes.is_empty() {
+                let crane_count = ship.assigned_cranes.len() as u32;
+                let process_amount = crane_count * 10;
+
+                if ship.containers_remaining > 0 {
+                    let processed = process_amount.min(ship.containers_remaining);
+                    let remaining = ship.containers_remaining - processed;
+
+                    let event = DomainEvent::ContainerProcessed {
+                        metadata: EventMetadata::new(self.session_id, self.ai_port.version() + 1),
+                        crane_id: ship.assigned_cranes[0],
+                        ship_id: ship.id,
+                        containers_remaining: remaining,
+                    };
+
+                    events.push(event);
+                }
+            }
+        }
+
+        for event in &events {
+            self.ai_port.apply_event(event);
+        }
+
+        self.event_store.append(self.session_id, events).ok();
+    }
+
+    /// AI takes its turn using MCTS
+    pub fn ai_take_turn(&mut self) {
+        // Get best action from MCTS
+        if let Some(action) = self.mcts_engine.search(&self.ai_port) {
+            // Apply action to AI port
+            match action {
+                crate::mcts::MCTSAction::DockShip { ship_id, berth_id } => {
+                    use crate::application::handlers::handle_dock_ship_command;
+
+                    if let Ok(events) = handle_dock_ship_command(
+                        &self.ai_port,
+                        self.session_id,
+                        ship_id,
+                        berth_id,
+                        self.ai_port.player_id,
+                    ) {
+                        for event in &events {
+                            self.ai_port.apply_event(event);
+                        }
+                        self.event_store.append(self.session_id, events).ok();
+                    }
+                }
+                crate::mcts::MCTSAction::AssignCrane { crane_id, ship_id } => {
+                    use crate::application::handlers::handle_assign_crane_command;
+
+                    if let Ok(events) = handle_assign_crane_command(
+                        &self.ai_port,
+                        self.session_id,
+                        crane_id,
+                        ship_id,
+                        self.ai_port.player_id,
+                    ) {
+                        for event in &events {
+                            self.ai_port.apply_event(event);
+                        }
+                        self.event_store.append(self.session_id, events).ok();
+                    }
+                }
+                _ => {} // Pass or other actions
+            }
+        }
+    }
+
+    /// Check if game is over (all ships processed)
+    pub fn is_game_over(&self) -> bool {
+        self.player_port.ships.is_empty() && self.ai_port.ships.is_empty()
+    }
+
+    /// Get winner (if game is over)
+    pub fn get_winner(&self) -> Option<&str> {
+        if !self.is_game_over() {
+            return None;
+        }
+
+        let player_score = self.player_port.calculate_score();
+        let ai_score = self.ai_port.calculate_score();
+
+        if player_score > ai_score {
+            Some("player")
+        } else if ai_score > player_score {
+            Some("ai")
+        } else {
+            Some("tie")
+        }
+    }
 }
 
 #[cfg(test)]
