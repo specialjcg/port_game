@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import init, { WasmGame } from '../../../pkg/port_game';
+import wasmUrl from '../../../pkg/port_game_bg.wasm?url';
 import type { GameState, PortState } from '../types/game';
 
 export function useGame() {
@@ -12,7 +13,7 @@ export function useGame() {
   useEffect(() => {
     const initGame = async () => {
       try {
-        await init();
+        await init(wasmUrl);
         const newGame = new WasmGame();
         newGame.spawnShips(3);
         setGame(newGame);
