@@ -1,4 +1,3 @@
-import React from 'react';
 import { useGame } from './hooks/useGame';
 import { Port } from './components/Port';
 import { GameControls } from './components/GameControls';

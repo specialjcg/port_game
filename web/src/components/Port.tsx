@@ -20,7 +20,6 @@ export const Port: React.FC<PortProps> = ({
   onAssignCrane
 }) => {
   const [selectedCrane, setSelectedCrane] = React.useState<number | null>(null);
-  const [selectedShip, setSelectedShip] = React.useState<number | null>(null);
 
   const waitingShips = port.ships.filter(s => !s.is_docked);
   const dockedShips = port.ships.filter(s => s.is_docked);
