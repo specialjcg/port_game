@@ -5,12 +5,27 @@ edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "port_game"
+path = "src/main.rs"
+
+[[test]]
+name = "gameplay_integration_test"
+path = "tests/gameplay_integration_test.rs"
+harness = true
+
+[[test]]
+name = "game_flow_test"
+path = "tests/game_flow_test.rs"
+harness = true
 
 [dependencies]
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.0", features = ["v4", "serde", "js"] }
+uuid = { version = "1.6.1", features = ["v4", "serde", "js"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # WebAssembly dependencies

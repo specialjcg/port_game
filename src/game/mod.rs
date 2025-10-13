@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::domain::aggregates::Port;
 use crate::domain::events::{DomainEvent, EventMetadata};
-use crate::domain::value_objects::{PlayerId, ShipId};
+use crate::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
 use crate::infrastructure::{EventStore, InMemoryEventStore};
 use crate::mcts::{MCTSConfig, MCTSEngine};
 
@@ -80,6 +80,10 @@ impl GameSession {
 
     pub fn start_turn(&mut self) {
         self.current_turn += 1;
+
+        // Nous ne libérons plus automatiquement toutes les grues
+        // self.player_port.free_all_cranes();
+        // self.ai_port.free_all_cranes();
 
         let event = DomainEvent::TurnStarted {
             metadata: EventMetadata::new(self.session_id, self.current_turn as u64),
@@ -282,7 +286,24 @@ impl GameSession {
 
     /// Check if game is over (all ships processed)
     pub fn is_game_over(&self) -> bool {
-        self.player_port.ships.is_empty() && self.ai_port.ships.is_empty()
+        // Conditions de fin de jeu :
+        // 1. Score suffisamment élevé (victoire)
+        if self.player_port.score > 1000 {
+            return true;
+        }
+
+        // 2. Trop de navires en attente (défaite)
+        let waiting_ships = self.player_port.waiting_ships().len();
+        if waiting_ships > 10 {
+            return true;
+        }
+
+        // 3. Durée maximum atteinte (30 tours)
+        if self.current_turn >= 30 {
+            return true;
+        }
+
+        false
     }
 
     /// Get winner (if game is over)
@@ -362,6 +383,48 @@ impl GameSession {
             })
             .collect()
     }
+
+    /// Free completed ships and their assigned cranes
+    pub fn free_completed_ships(&mut self) {
+        // Ne récupérer que les navires qui sont complètement déchargés
+        let completed_ships: Vec<_> = self.player_port.ships
+            .iter()
+            .filter(|(_, ship)| {
+                ship.is_docked() &&
+                ship.containers_remaining == 0  // Uniquement les navires complètement déchargés
+            })
+            .map(|(id, ship)| (*id, ship.docked_at.unwrap(), ship.assigned_cranes.clone()))
+            .collect();
+
+        for (ship_id, berth_id, crane_ids) in completed_ships {
+            // Libérer les grues uniquement pour les navires terminés
+            for crane_id in crane_ids {
+                self.player_port.free_crane(crane_id);
+            }
+            // Puis libérer le quai
+            self.player_port.undock_ship(ship_id, berth_id);
+            // Retirer le navire
+            self.player_port.ships.remove(&ship_id);
+        }
+    }
+
+    /// End turn with proper sequence
+    pub fn end_turn(&mut self) {
+        // 1. Process containers one last time
+        self.process_containers();
+
+        // 2. Free completed ships and their assigned cranes
+        self.free_completed_ships();
+
+        // 3. Process random events for next turn
+        self.process_random_events();
+
+        // 4. Let AI take its turn
+        self.ai_take_turn();
+
+        // 5. Start new turn
+        self.start_turn();
+    }
 }
 
 #[cfg(test)]
@@ -400,5 +463,38 @@ mod tests {
         let json = session.export_replay();
 
         assert!(json.is_ok());
+    }
+
+    #[test]
+    fn test_free_completed_ships() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+        let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+        // 1. Spawn a ship
+        session.spawn_ships(1);
+        let ship_id = ShipId::new(0);
+        let berth_id = BerthId::new(0);
+
+        // 2. Dock it and assign a crane
+        session.player_dock_ship(ship_id, berth_id).unwrap();
+        session.player_assign_crane(CraneId::new(0), ship_id).unwrap();
+
+        // 3. Empty its containers
+        let ship = session.player_port.ships.get_mut(&ship_id).unwrap();
+        ship.containers_remaining = 0;
+
+        // 4. Call free_completed_ships
+        session.free_completed_ships();
+
+        // 5. Verify:
+        // - Ship should be gone
+        assert!(!session.player_port.ships.contains_key(&ship_id));
+        // - Berth should be free
+        let berth = session.player_port.berths.get(&berth_id).unwrap();
+        assert!(berth.is_free());
+        // - Crane should be unassigned
+        let crane = session.player_port.cranes.get(&CraneId::new(0)).unwrap();
+        assert!(crane.is_free());
     }
 }

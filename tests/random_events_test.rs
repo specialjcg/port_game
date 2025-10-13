@@ -187,31 +187,34 @@ fn test_container_processing_with_modified_efficiency() {
     let ai_id = PlayerId::new();
     let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
 
-    // Setup: spawn ships, dock, assign cranes
+    // Créer et docker un navire
     session.spawn_ships(1);
-    let ship_id = session.player_port.ships.keys().next().copied().unwrap();
-    let berth_id = session.player_port.free_berths()[0].id;
-    session.player_dock_ship(ship_id, berth_id).unwrap();
+    let ship_id = *session.player_port.ships.iter().next().unwrap().0;
+    let berth_id = *session.player_port.berths.iter().next().unwrap().0;
+    let crane_id = *session.player_port.cranes.iter().next().unwrap().0;
 
-    let crane_id = session.player_port.free_cranes()[0].id;
+    // Docker le navire et assigner une grue
+    session.player_dock_ship(ship_id, berth_id).unwrap();
     session.player_assign_crane(crane_id, ship_id).unwrap();
 
-    // Add storm with longer duration to ensure it stays active
+    // Ajouter un événement de tempête qui réduit l'efficacité de 50%
     let storm = RandomEvent::Storm {
-        duration_turns: 2, // Will be active for the container processing
+        duration_turns: 2,
         efficiency_penalty: 0.5,
     };
     session.active_events.push(ActiveEvent::new(storm));
+
+    // S'assurer que le modificateur est appliqué
     session.process_random_events();
 
     let initial_containers = session.player_port.ships.get(&ship_id).unwrap().containers_remaining;
 
-    // Process containers - efficiency modifier should still be 0.5
+    // Traiter les conteneurs avec l'efficacité réduite
     session.process_containers();
 
     let final_containers = session.player_port.ships.get(&ship_id).unwrap().containers_remaining;
     let processed = initial_containers - final_containers;
 
-    // Should process only 5 containers (10 * 0.5) instead of 10
-    assert_eq!(processed, 5);
+    // Une grue traite normalement 10 conteneurs, avec 50% d'efficacité, elle devrait en traiter 5
+    assert_eq!(processed, 5, "Devrait traiter 5 conteneurs avec l'efficacité réduite de 50%");
 }

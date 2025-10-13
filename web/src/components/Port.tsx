@@ -30,7 +30,7 @@ export const Port: React.FC<PortProps> = ({
   };
 
   const handleShipClick = (shipId: number) => {
-    if (!isPlayer || !selectedCrane) return;
+    if (!isPlayer || selectedCrane === null) return;
     const ship = port.ships.find(s => s.id === shipId);
     if (ship && ship.is_docked && onAssignCrane) {
       onAssignCrane(selectedCrane, shipId);

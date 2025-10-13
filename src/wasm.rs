@@ -51,6 +51,12 @@ impl WasmGame {
         self.session.start_turn();
     }
 
+    /// End the current turn
+    #[wasm_bindgen(js_name = endTurn)]
+    pub fn end_turn(&mut self) {
+        self.session.end_turn();
+    }
+
     /// Spawn ships
     #[wasm_bindgen(js_name = spawnShips)]
     pub fn spawn_ships(&mut self, count: usize) {
@@ -68,15 +74,50 @@ impl WasmGame {
     /// Player assigns crane
     #[wasm_bindgen(js_name = assignCrane)]
     pub fn assign_crane(&mut self, crane_id: usize, ship_id: usize) -> Result<(), JsValue> {
-        self.session
-            .player_assign_crane(CraneId::new(crane_id), ShipId::new(ship_id))
-            .map_err(|e| JsValue::from_str(&e))
+        // Conversion des IDs en évitant les allocations inutiles
+        let crane = CraneId::new(crane_id);
+        let ship = ShipId::new(ship_id);
+
+        // Vérification préalable pour éviter les allocations en cas d'erreur
+        if !self.session.player_port.cranes.contains_key(&crane) {
+            return Err(JsValue::from_str("Crane not found"));
+        }
+        if !self.session.player_port.ships.contains_key(&ship) {
+            return Err(JsValue::from_str("Ship not found"));
+        }
+
+        // Assignation avec gestion d'erreur simplifiée
+        match self.session.player_assign_crane(crane, ship) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // Conversion d'erreur sans allocation dynamique
+                Err(JsValue::from_str(e.as_str()))
+            }
+        }
     }
 
     /// Process containers
-    #[wasm_bindgen(js_name = processContainers)]
+    #[wasm_bindgen(js_name = "processContainers")]
     pub fn process_containers(&mut self) {
+        // Collecter d'abord les informations nécessaires
+        let completed_ships: Vec<_> = self.session.player_port.ships
+            .iter()
+            .filter(|(_, ship)| ship.is_docked() && ship.containers_remaining == 0)
+            .map(|(id, ship)| (*id, ship.docked_at.unwrap(), ship.assigned_cranes.clone()))
+            .collect();
+
+        // Traiter les conteneurs
         self.session.process_containers();
+
+        // Libérer les navires terminés
+        for (ship_id, berth_id, crane_ids) in completed_ships {
+            // Libérer les grues
+            for crane_id in crane_ids {
+                self.session.player_port.free_crane(crane_id);
+            }
+            // Libérer le navire
+            self.session.player_port.undock_ship(ship_id, berth_id);
+        }
     }
 
     /// AI takes turn
@@ -146,6 +187,12 @@ impl WasmGame {
     #[wasm_bindgen(js_name = getCraneEfficiency)]
     pub fn get_crane_efficiency(&self) -> f64 {
         self.session.crane_efficiency_modifier
+    }
+
+    /// Free completed ships and their resources
+    #[wasm_bindgen(js_name = freeCompletedShips)]
+    pub fn free_completed_ships(&mut self) {
+        self.session.free_completed_ships();
     }
 }
 

@@ -2,9 +2,9 @@
 // Port is the main aggregate root
 
 use std::collections::HashMap;
-
+use uuid::Uuid;
 use super::entities::{Berth, Crane, Ship};
-use super::events::DomainEvent;
+use super::events::{DomainEvent, EventMetadata};
 use super::value_objects::{BerthId, CraneId, PlayerId, ShipId};
 
 /// Port aggregate - Manages ships, berths, and cranes
@@ -115,7 +115,10 @@ impl Port {
                 ..
             } => {
                 if let Some(ship) = self.ships.get_mut(ship_id) {
+                    let containers_processed = ship.containers_remaining - *containers_remaining;
                     ship.containers_remaining = *containers_remaining;
+                    // Mise à jour du score : 10 points par conteneur traité
+                    self.score += (containers_processed * 10) as i32;
                 }
             }
 
@@ -179,6 +182,45 @@ impl Port {
 
     pub fn mark_events_committed(&mut self) {
         self.uncommitted_events.clear();
+    }
+
+    pub fn free_crane(&mut self, crane_id: CraneId) {
+        if let Some(crane) = self.cranes.get_mut(&crane_id) {
+            if let Some(ship_id) = crane.assigned_to {
+                let event = DomainEvent::CraneUnassigned {
+                    metadata: EventMetadata::new(Uuid::new_v4(), self.version + 1),
+                    crane_id,
+                    ship_id,
+                    unassignment_time: self.current_time,
+                };
+                self.apply_event(&event);
+                self.uncommitted_events.push(event);
+            }
+        }
+    }
+
+    pub fn undock_ship(&mut self, ship_id: ShipId, berth_id: BerthId) {
+        if let Some(ship) = self.ships.get(&ship_id) {
+            if ship.docked_at == Some(berth_id) {
+                let containers_processed = ship.containers - ship.containers_remaining;
+                let event = DomainEvent::ShipUndocked {
+                    metadata: EventMetadata::new(Uuid::new_v4(), self.version + 1),
+                    ship_id,
+                    berth_id,
+                    completion_time: self.current_time,
+                    containers_processed,
+                };
+                self.apply_event(&event);
+                self.uncommitted_events.push(event);
+            }
+        }
+    }
+
+    /// Libère toutes les grues du port
+    pub fn free_all_cranes(&mut self) {
+        for crane in self.cranes.values_mut() {
+            crane.unassign();
+        }
     }
 }
 
@@ -281,5 +323,71 @@ mod tests {
 
         let ship = port.ships.get(&ShipId::new(1)).unwrap();
         assert_eq!(ship.assigned_cranes.len(), 1);
+    }
+
+    #[test]
+    fn test_free_crane() {
+        let player_id = PlayerId::new();
+        let mut port = Port::new(player_id, 2, 2);
+
+        let arrival_event = DomainEvent::ShipArrived {
+            metadata: EventMetadata::new(Uuid::new_v4(), 1),
+            ship_id: ShipId::new(1),
+            container_count: 50,
+            arrival_time: 0.0,
+        };
+        port.apply_event(&arrival_event);
+
+        let dock_event = DomainEvent::ShipDocked {
+            metadata: EventMetadata::new(Uuid::new_v4(), 2),
+            ship_id: ShipId::new(1),
+            berth_id: BerthId::new(0),
+            player: player_id,
+            docking_time: 1.0,
+        };
+        port.apply_event(&dock_event);
+
+        let crane_event = DomainEvent::CraneAssigned {
+            metadata: EventMetadata::new(Uuid::new_v4(), 3),
+            crane_id: CraneId::new(0),
+            ship_id: ShipId::new(1),
+            player: player_id,
+            assignment_time: 2.0,
+        };
+        port.apply_event(&crane_event);
+
+        assert_eq!(port.free_cranes().len(), 1);
+
+        port.free_crane(CraneId::new(0));
+
+        assert_eq!(port.free_cranes().len(), 2);
+    }
+
+    #[test]
+    fn test_undock_ship() {
+        let player_id = PlayerId::new();
+        let mut port = Port::new(player_id, 2, 2);
+
+        let arrival_event = DomainEvent::ShipArrived {
+            metadata: EventMetadata::new(Uuid::new_v4(), 1),
+            ship_id: ShipId::new(1),
+            container_count: 50,
+            arrival_time: 0.0,
+        };
+        port.apply_event(&arrival_event);
+
+        let dock_event = DomainEvent::ShipDocked {
+            metadata: EventMetadata::new(Uuid::new_v4(), 2),
+            ship_id: ShipId::new(1),
+            berth_id: BerthId::new(0),
+            player: player_id,
+            docking_time: 1.0,
+        };
+        port.apply_event(&dock_event);
+
+        port.undock_ship(ShipId::new(1), BerthId::new(0));
+
+        assert_eq!(port.ships.len(), 0);
+        assert_eq!(port.free_berths().len(), 2);
     }
 }

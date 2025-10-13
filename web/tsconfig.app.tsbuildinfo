@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/components/Berth.tsx","./src/components/Crane.tsx","./src/components/GameControls.tsx","./src/components/Port.tsx","./src/components/Ship.tsx","./src/hooks/useGame.ts","./src/types/game.ts","./src/types/port_game.d.ts"],"errors":true,"version":"5.9.3"}

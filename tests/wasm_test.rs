@@ -119,6 +119,33 @@ mod wasm_tests {
         let winner = game.get_winner();
         assert!(winner.is_none());
     }
+
+    #[wasm_bindgen_test]
+    fn test_end_turn_sequence() {
+        let mut game = WasmGame::new();
+
+        // Configuration initiale
+        game.spawn_ships(1);
+        game.dock_ship(0, 0).unwrap();
+        game.assign_crane(0, 0).unwrap();
+
+        let initial_turn = game.get_current_turn();
+
+        // Exécuter la fin du tour
+        game.end_turn();
+
+        // Vérifications
+        assert_eq!(game.get_current_turn(), initial_turn + 1,
+            "Le tour devrait être incrémenté après endTurn");
+
+        // Vérifier que le port AI a pris son tour
+        let ai_port = game.get_ai_port();
+        assert!(ai_port.is_object(), "Le port AI devrait avoir un état valide");
+
+        // Vérifier que les événements aléatoires ont été traités
+        let active_effects = game.get_active_effects();
+        assert!(active_effects.is_object(), "Les effets actifs devraient être disponibles");
+    }
 }
 
 // Native Rust tests (always run)

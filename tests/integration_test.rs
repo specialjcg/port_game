@@ -1,9 +1,7 @@
-// Integration tests for Port Game
-// Tests the full game flow from start to finish
-
+//! Tests d'intégration pour port_game
 use port_game::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
 use port_game::game::{GameMode, GameSession};
-use port_game::infrastructure::{EventStore, InMemoryEventStore};
+use port_game::infrastructure::event_store::{EventStore, InMemoryEventStore}; // Correction du chemin d'import
 
 #[test]
 fn test_game_session_initialization() {

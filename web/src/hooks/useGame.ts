@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import init, { WasmGame } from '../../../pkg/port_game';
-import wasmUrl from '../../../pkg/port_game_bg.wasm?url';
 import type { GameState, PortState } from '../types/game';
+import init, { WasmGame } from 'port_game';
 
 export function useGame() {
   const [game, setGame] = useState<WasmGame | null>(null);
@@ -13,7 +12,9 @@ export function useGame() {
   useEffect(() => {
     const initGame = async () => {
       try {
-        await init(wasmUrl);
+        // Initialiser le module WASM
+        await init();
+        // Créer une nouvelle instance du jeu
         const newGame = new WasmGame();
         newGame.spawnShips(3);
         setGame(newGame);
@@ -22,6 +23,7 @@ export function useGame() {
       } catch (err) {
         setError(`Failed to initialize game: ${err}`);
         setLoading(false);
+        console.error("Game initialization error:", err);
       }
     };
 
@@ -29,7 +31,7 @@ export function useGame() {
   }, []);
 
   // Update game state from WASM
-  const updateGameState = useCallback((g: WasmGame) => {
+  const updateGameState = useCallback((g: any) => {
     try {
       const playerPort = g.getPlayerPort() as PortState;
       const aiPort = g.getAiPort() as PortState;
@@ -79,12 +81,14 @@ export function useGame() {
   const endTurn = useCallback(() => {
     if (!game) return;
     try {
-      game.processContainers();
-      game.aiTakeTurn();
-      game.spawnShips(1);
+      // Utiliser la fonction endTurn du backend qui gère déjà la séquence complète
+      game.endTurn();
+
+      // Mettre à jour l'état
       updateGameState(game);
     } catch (err) {
       setError(`Failed to end turn: ${err}`);
+      console.error("End turn error details:", err);
     }
   }, [game, updateGameState]);
 

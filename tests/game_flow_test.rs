@@ -7,6 +7,9 @@ use port_game::application::handlers::{
 use port_game::domain::aggregates::Port;
 use port_game::domain::entities::Ship;
 use port_game::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
+use port_game::game::{GameMode, GameSession};
+use port_game::domain::events::DomainEvent;
+use port_game::infrastructure::event_store::InMemoryEventStore;
 use uuid::Uuid;
 
 #[test]
@@ -211,4 +214,100 @@ fn test_query_port_state() {
     assert_eq!(view.berths.len(), 2);
     assert_eq!(view.cranes.len(), 2);
     assert_eq!(view.player_id, player_id);
+}
+
+mod tests {
+    use port_game::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
+    use port_game::game::{GameMode, GameSession};
+    use port_game::domain::events::DomainEvent;
+    use port_game::infrastructure::event_store::InMemoryEventStore;
+
+    #[test]
+    fn test_free_completed_ships() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+        let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+        // 1. Spawn and dock a ship
+        session.spawn_ships(1);
+        let ship_id = ShipId::new(0);
+        let berth_id = BerthId::new(0);
+
+        // 2. Dock it and assign a crane
+        session.player_dock_ship(ship_id, berth_id).unwrap();
+        session.player_assign_crane(CraneId::new(0), ship_id).unwrap();
+
+        // 3. Empty its containers
+        {
+            let ship = session.player_port.ships.get_mut(&ship_id).unwrap();
+            ship.containers_remaining = 0;
+        }
+
+        // 4. Free completed ships
+        session.free_completed_ships();
+
+        // 5. Verify the cleanup
+        assert!(!session.player_port.ships.contains_key(&ship_id), "Ship should be removed");
+        assert!(session.player_port.berths.get(&berth_id).unwrap().is_free(), "Berth should be free");
+
+        let crane = session.player_port.cranes.get(&CraneId::new(0)).unwrap();
+        assert!(crane.is_free(), "Crane should be unassigned");
+
+        // 6. Verify game state consistency
+        assert_eq!(session.player_port.docked_ships().len(), 0, "No ships should be docked");
+        assert_eq!(session.player_port.free_berths().len(), 2, "All berths should be free");
+        assert_eq!(session.player_port.free_cranes().len(), 2, "All cranes should be free");
+    }
+
+    #[test]
+    fn test_complete_turn_cycle() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+        let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+        // 1. Initial state
+        let initial_turn = session.current_turn;
+        let initial_score = session.player_port.score;
+
+        // 2. Spawn and dock a ship with cargo
+        session.spawn_ships(1);
+        let ship_id = ShipId::new(0);
+        let berth_id = BerthId::new(0);
+        session.player_dock_ship(ship_id, berth_id).unwrap();
+        session.player_assign_crane(CraneId::new(0), ship_id).unwrap();
+
+        // Sauvegarder l'état initial du navire
+        let initial_containers = session.player_port.ships.get(&ship_id).unwrap().containers_remaining;
+
+        // 3. End turn et vérifications
+        session.end_turn();
+
+        // 4. Vérifier que le tour a bien avancé
+        assert_eq!(session.current_turn, initial_turn + 1, "Le tour devrait être incrémenté");
+
+        // 5. Vérifier le traitement des conteneurs
+        let ship = session.player_port.ships.get(&ship_id).unwrap();
+        assert!(ship.containers_remaining < initial_containers,
+            "Les conteneurs du navire devraient avoir diminué");
+
+        // 6. Vérifier les points
+        assert!(session.player_port.score > initial_score,
+            "Le score du joueur devrait avoir augmenté après le traitement des conteneurs");
+
+        // 7. Vérifier l'état des ressources
+        let crane = session.player_port.cranes.get(&CraneId::new(0)).unwrap();
+        assert!(crane.assigned_to.is_some(),
+            "La grue devrait rester assignée au navire non complété");
+        assert_eq!(crane.assigned_to, Some(ship_id),
+            "La grue devrait toujours être assignée au même navire");
+
+        // 8. Vérifier l'état du quai
+        let berth = session.player_port.berths.get(&berth_id).unwrap();
+        assert!(!berth.is_free(), "Le quai devrait toujours être occupé");
+
+        // 9. Effectuer un autre tour pour vérifier la continuité
+        session.end_turn();
+        assert_eq!(session.current_turn, initial_turn + 2,
+            "Le deuxième tour devrait être correctement incrémenté");
+    }
 }

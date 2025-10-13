@@ -12,7 +12,7 @@ export const Berth: React.FC<BerthProps> = ({ berth, ship, onDropShip }) => {
     e.preventDefault();
     const shipId = parseInt(e.dataTransfer.getData('shipId'));
     if (onDropShip && berth.is_free) {
-      onDropShip(berth.id, shipId);
+      onDropShip(shipId, berth.id);
     }
   };
 
@@ -22,9 +22,12 @@ export const Berth: React.FC<BerthProps> = ({ berth, ship, onDropShip }) => {
     }
   };
 
+  // Déterminer si le quai est réellement occupé (il faut un berth non libre ET un navire valide)
+  const isOccupied = !berth.is_free && ship && ship.containers_remaining > 0;
+
   return (
     <div
-      className={`berth ${berth.is_free ? 'free' : 'occupied'}`}
+      className={`berth ${isOccupied ? 'occupied' : 'free'}`}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
@@ -34,7 +37,7 @@ export const Berth: React.FC<BerthProps> = ({ berth, ship, onDropShip }) => {
       </div>
 
       <div className="berth-content">
-        {berth.is_free ? (
+        {!isOccupied ? (
           <div className="berth-empty">
             <span className="drop-hint">Drop ship here</span>
           </div>
@@ -46,11 +49,7 @@ export const Berth: React.FC<BerthProps> = ({ berth, ship, onDropShip }) => {
               {ship.containers_remaining} / {ship.containers} 📦
             </div>
           </div>
-        ) : (
-          <div className="berth-occupied">
-            Ship #{berth.occupied_by}
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
