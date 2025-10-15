@@ -50,10 +50,10 @@ fn main() {
                     Ok(PlayerAction::DockShip { ship_id, berth_id }) => {
                         match session.player_dock_ship(ship_id, berth_id) {
                             Ok(_) => {
-                                display_action_result(true, &format!(
-                                    "Ship #{} docked at Berth #{}",
-                                    ship_id.0, berth_id.0
-                                ));
+                                display_action_result(
+                                    true,
+                                    &format!("Ship #{} docked at Berth #{}", ship_id.0, berth_id.0),
+                                );
                             }
                             Err(e) => {
                                 display_action_result(false, &e);
@@ -64,10 +64,13 @@ fn main() {
                     Ok(PlayerAction::AssignCrane { crane_id, ship_id }) => {
                         match session.player_assign_crane(crane_id, ship_id) {
                             Ok(_) => {
-                                display_action_result(true, &format!(
-                                    "Crane #{} assigned to Ship #{}",
-                                    crane_id.0, ship_id.0
-                                ));
+                                display_action_result(
+                                    true,
+                                    &format!(
+                                        "Crane #{} assigned to Ship #{}",
+                                        crane_id.0, ship_id.0
+                                    ),
+                                );
                             }
                             Err(e) => {
                                 display_action_result(false, &e);

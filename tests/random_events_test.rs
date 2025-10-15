@@ -160,8 +160,11 @@ fn test_event_descriptions() {
 #[test]
 fn test_events_expire_after_duration() {
     let player_id = PlayerId::new();
-    let ai_id = PlayerId::new();
+  	let ai_id = PlayerId::new();
     let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+    // Désactiver la génération aléatoire pour un test déterministe
+    session.event_generator = EventGenerator::new(0.0);
 
     let storm = RandomEvent::Storm {
         duration_turns: 2, // Need 2 turns to see the expiration

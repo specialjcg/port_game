@@ -2,8 +2,8 @@
 // CQRS pattern: separates Commands (write) from Queries (read)
 
 pub mod commands;
-pub mod queries;
 pub mod handlers;
+pub mod queries;
 
 pub use commands::Command;
 pub use queries::Query;

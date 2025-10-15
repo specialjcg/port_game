@@ -4,11 +4,10 @@ pub mod events;
 
 use uuid::Uuid;
 
+use crate::application::handlers::{handle_assign_crane_command, handle_dock_ship_command};
 use crate::domain::aggregates::Port;
 use crate::domain::events::{DomainEvent, EventMetadata};
-#[cfg(test)]
-use crate::domain::value_objects::{BerthId, CraneId};
-use crate::domain::value_objects::{PlayerId, ShipId};
+use crate::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
 use crate::infrastructure::{EventStore, InMemoryEventStore};
 use crate::mcts::{MCTSConfig, MCTSEngine};
 
@@ -35,6 +34,7 @@ pub struct GameSession {
     pub event_generator: EventGenerator,
     pub active_events: Vec<ActiveEvent>,
     pub crane_efficiency_modifier: f64, // 1.0 = normal, <1.0 = penalty, >1.0 = bonus
+    next_ship_id: usize,
 }
 
 impl GameSession {
@@ -49,6 +49,7 @@ impl GameSession {
             num_simulations: 100, // Small for MVP
             exploration_constant: 1.41,
             max_depth: 20,
+            max_actions_per_turn: 1,
         };
 
         let mcts_engine = MCTSEngine::new(mcts_config);
@@ -77,6 +78,7 @@ impl GameSession {
             event_generator: EventGenerator::default(),
             active_events: Vec::new(),
             crane_efficiency_modifier: 1.0,
+            next_ship_id: 0,
         }
     }
 
@@ -100,7 +102,8 @@ impl GameSession {
         let mut events = Vec::new();
 
         for i in 0..count {
-            let ship_id = ShipId::new(self.current_turn as usize * 10 + i);
+            let ship_id = ShipId::new(self.next_ship_id);
+            self.next_ship_id += 1;
             let containers = 20 + (i * 10) as u32; // Varying sizes
 
             let event = DomainEvent::ShipArrived {
@@ -248,45 +251,40 @@ impl GameSession {
 
     /// AI takes its turn using MCTS
     pub fn ai_take_turn(&mut self) {
-        // Get best action from MCTS
-        if let Some(action) = self.mcts_engine.search(&self.ai_port) {
-            // Apply action to AI port
-            match action {
-                crate::mcts::MCTSAction::DockShip { ship_id, berth_id } => {
-                    use crate::application::handlers::handle_dock_ship_command;
+        let max_actions = self
+            .mcts_engine
+            .config()
+            .max_actions_per_turn
+            .max(1);
 
-                    if let Ok(events) = handle_dock_ship_command(
-                        &self.ai_port,
-                        self.session_id,
-                        ship_id,
-                        berth_id,
-                        self.ai_port.player_id,
-                    ) {
-                        for event in &events {
-                            self.ai_port.apply_event(event);
-                        }
-                        self.event_store.append(self.session_id, events).ok();
-                    }
+        for _ in 0..max_actions {
+            // Get best action from MCTS
+            let Some(action) = self.mcts_engine.search(&self.ai_port) else {
+                break;
+            };
+
+            // Apply action to AI port
+            let applied = match action.clone() {
+                crate::mcts::MCTSAction::DockShip { ship_id, berth_id } => {
+                    self.ai_dock_ship(ship_id, berth_id)
                 }
                 crate::mcts::MCTSAction::AssignCrane { crane_id, ship_id } => {
-                    use crate::application::handlers::handle_assign_crane_command;
-
-                    if let Ok(events) = handle_assign_crane_command(
-                        &self.ai_port,
-                        self.session_id,
-                        crane_id,
-                        ship_id,
-                        self.ai_port.player_id,
-                    ) {
-                        for event in &events {
-                            self.ai_port.apply_event(event);
-                        }
-                        self.event_store.append(self.session_id, events).ok();
-                    }
+                    self.ai_assign_crane(crane_id, ship_id)
                 }
-                _ => {} // Pass or other actions
+                crate::mcts::MCTSAction::UnassignCrane { crane_id } => {
+                    // Utilise la logique de domaine directe: libère la grue si affectée
+                    self.ai_port.free_crane(crane_id);
+                    true
+                }
+                crate::mcts::MCTSAction::Pass => false,
+            };
+
+            if !applied {
+                break;
             }
         }
+
+        self.ai_fill_open_berths_and_assign_cranes();
     }
 
     /// Check if game is over (all ships processed)
@@ -416,6 +414,21 @@ impl GameSession {
             // Retirer le navire
             self.player_port.ships.remove(&ship_id);
         }
+
+        let completed_ai_ships: Vec<_> = self
+            .ai_port
+            .ships
+            .iter()
+            .filter(|(_, ship)| ship.is_docked() && ship.containers_remaining == 0)
+            .map(|(id, ship)| (*id, ship.docked_at.unwrap(), ship.assigned_cranes.clone()))
+            .collect();
+
+        for (ship_id, berth_id, crane_ids) in completed_ai_ships {
+            for crane_id in crane_ids {
+                self.ai_port.free_crane(crane_id);
+            }
+            self.ai_port.undock_ship(ship_id, berth_id);
+        }
     }
 
     /// End turn with proper sequence
@@ -432,8 +445,93 @@ impl GameSession {
         // 4. Let AI take its turn
         self.ai_take_turn();
 
+        // 4bis. AI fills any remaining free berths and assign cranes
+        self.ai_fill_open_berths_and_assign_cranes();
+
         // 5. Start new turn
         self.start_turn();
+    }
+
+    fn apply_ai_events(&mut self, events: Vec<DomainEvent>) {
+        for event in &events {
+            self.ai_port.apply_event(event);
+        }
+        self.event_store.append(self.session_id, events).ok();
+    }
+
+    fn ai_dock_ship(&mut self, ship_id: ShipId, berth_id: BerthId) -> bool {
+        match handle_dock_ship_command(
+            &self.ai_port,
+            self.session_id,
+            ship_id,
+            berth_id,
+            self.ai_port.player_id,
+        ) {
+            Ok(events) => {
+                self.apply_ai_events(events);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn ai_assign_crane(&mut self, crane_id: CraneId, ship_id: ShipId) -> bool {
+        match handle_assign_crane_command(
+            &self.ai_port,
+            self.session_id,
+            crane_id,
+            ship_id,
+            self.ai_port.player_id,
+        ) {
+            Ok(events) => {
+                self.apply_ai_events(events);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn ai_fill_open_berths_and_assign_cranes(&mut self) {
+        loop {
+            let waiting_ships = self.ai_port.waiting_ships();
+            let free_berths = self.ai_port.free_berths();
+
+            if waiting_ships.is_empty() || free_berths.is_empty() {
+                break;
+            }
+
+            let ship_id = waiting_ships[0].id;
+            let berth_id = free_berths[0].id;
+
+            if !self.ai_dock_ship(ship_id, berth_id) {
+                break;
+            }
+
+            if let Some(crane) = self.ai_port.free_cranes().first() {
+                self.ai_assign_crane(crane.id, ship_id);
+            }
+        }
+
+        loop {
+            let free_crane = match self.ai_port.free_cranes().first() {
+                Some(crane) => crane.id,
+                None => break,
+            };
+
+            let target_ship = match self
+                .ai_port
+                .docked_ships()
+                .into_iter()
+                .find(|ship| ship.assigned_cranes.is_empty())
+            {
+                Some(ship) => ship.id,
+                None => break,
+            };
+
+            if !self.ai_assign_crane(free_crane, target_ship) {
+                break;
+            }
+        }
     }
 }
 

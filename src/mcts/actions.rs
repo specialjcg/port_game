@@ -8,21 +8,13 @@ use crate::domain::value_objects::{BerthId, CraneId, ShipId};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MCTSAction {
     /// Dock a ship to a berth
-    DockShip {
-        ship_id: ShipId,
-        berth_id: BerthId,
-    },
+    DockShip { ship_id: ShipId, berth_id: BerthId },
 
     /// Assign a crane to a docked ship
-    AssignCrane {
-        crane_id: CraneId,
-        ship_id: ShipId,
-    },
+    AssignCrane { crane_id: CraneId, ship_id: ShipId },
 
     /// Unassign a crane
-    UnassignCrane {
-        crane_id: CraneId,
-    },
+    UnassignCrane { crane_id: CraneId },
 
     /// Do nothing (pass)
     Pass,

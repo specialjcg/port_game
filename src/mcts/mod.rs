@@ -17,6 +17,7 @@ pub struct MCTSConfig {
     pub num_simulations: usize,
     pub exploration_constant: f64, // UCB1 constant (√2 is standard)
     pub max_depth: usize,
+    pub max_actions_per_turn: usize,
 }
 
 impl Default for MCTSConfig {
@@ -25,6 +26,7 @@ impl Default for MCTSConfig {
             num_simulations: 1000,
             exploration_constant: 1.41, // √2
             max_depth: 50,
+            max_actions_per_turn: 1,
         }
     }
 }
@@ -71,19 +73,32 @@ impl MCTSEngine {
     }
 
     fn expand(&mut self, node_id: usize, _port: &Port) -> usize {
-        self.tree.expand(node_id)
+        self.tree.expand(node_id, self.config.max_depth)
     }
 
     fn simulate(&self, node_id: usize) -> f64 {
-        // Simple random playout simulation
-        let state = self.tree.get_state(node_id);
+        // Random playout simulation with depth limit
+        let mut simulated_state = self.tree.get_state(node_id).clone();
+        let mut depth = self.tree.node_depth(node_id);
 
-        // Heuristic: score based on containers processed and waiting time
-        let mut score = state.calculate_score() as f64;
+        while depth < self.config.max_depth {
+            let actions = self.tree.generate_actions(&simulated_state);
+            if actions.is_empty() {
+                break;
+            }
 
-        // Add random exploration noise
-        score += random::range_f64(-10.0, 10.0);
+            let action_index = random::range_usize(0, actions.len());
+            if let Some(action) = actions.get(action_index).cloned() {
+                MCTSTree::apply_action_to_state(&mut simulated_state, &action);
+            } else {
+                break;
+            }
 
+            depth += 1;
+        }
+
+        let mut score = simulated_state.calculate_score() as f64;
+        score += random::range_f64(-5.0, 5.0);
         score
     }
 
@@ -93,6 +108,10 @@ impl MCTSEngine {
 
     pub fn get_tree(&self) -> &MCTSTree {
         &self.tree
+    }
+
+    pub fn config(&self) -> &MCTSConfig {
+        &self.config
     }
 
     pub fn get_statistics(&self) -> MCTSStatistics {
@@ -130,6 +149,7 @@ mod tests {
             num_simulations: 10, // Small for testing
             exploration_constant: 1.41,
             max_depth: 10,
+            max_actions_per_turn: 2,
         };
 
         let mut engine = MCTSEngine::new(config);

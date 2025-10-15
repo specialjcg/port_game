@@ -16,7 +16,12 @@ pub struct MCTSNode {
 }
 
 impl MCTSNode {
-    pub fn new(state: Port, action: Option<MCTSAction>, parent: Option<usize>, depth: usize) -> Self {
+    pub fn new(
+        state: Port,
+        action: Option<MCTSAction>,
+        parent: Option<usize>,
+        depth: usize,
+    ) -> Self {
         Self {
             state,
             action,
@@ -42,7 +47,8 @@ impl MCTSNode {
             f64::INFINITY // Always explore unvisited nodes first
         } else {
             let exploitation = self.average_score();
-            let exploration = exploration_constant * ((parent_visits as f64).ln() / self.visits as f64).sqrt();
+            let exploration =
+                exploration_constant * ((parent_visits as f64).ln() / self.visits as f64).sqrt();
             exploitation + exploration
         }
     }
@@ -94,12 +100,16 @@ impl MCTSTree {
         }
     }
 
-    pub fn expand(&mut self, node_id: usize) -> usize {
+    pub fn expand(&mut self, node_id: usize, max_depth: usize) -> usize {
         // Clone necessary data before modifying self.nodes
         let (state, depth) = {
             let node = &self.nodes[node_id];
             (node.state.clone(), node.depth)
         };
+
+        if depth >= max_depth {
+            return node_id;
+        }
 
         // Generate possible actions (simplified for MVP)
         let actions = self.generate_actions(&state);
@@ -111,10 +121,8 @@ impl MCTSTree {
         // Create child nodes for each action
         let mut child_ids = Vec::new();
         for action in actions {
-            let new_state = state.clone();
-            // Apply action to state (simplified)
-            // In full implementation, this would properly apply the action
-
+            let mut new_state = state.clone();
+            Self::apply_action_to_state(&mut new_state, &action);
             let child = MCTSNode::new(new_state, Some(action), Some(node_id), depth + 1);
             let child_id = self.nodes.len();
             self.nodes.push(child);
@@ -169,7 +177,14 @@ impl MCTSTree {
         self.nodes.iter().map(|n| n.depth).max().unwrap_or(0)
     }
 
-    fn generate_actions(&self, port: &Port) -> Vec<MCTSAction> {
+    pub(crate) fn node_depth(&self, node_id: usize) -> usize {
+        self.nodes
+            .get(node_id)
+            .map(|node| node.depth)
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn generate_actions(&self, port: &Port) -> Vec<MCTSAction> {
         let mut actions = Vec::new();
 
         // Generate DockShip actions
@@ -198,6 +213,80 @@ impl MCTSTree {
         }
 
         actions
+    }
+
+    pub(crate) fn apply_action_to_state(state: &mut Port, action: &MCTSAction) {
+        match action {
+            MCTSAction::DockShip { ship_id, berth_id } => {
+                if let Some(ship) = state.ships.get_mut(ship_id) {
+                    ship.dock(*berth_id);
+                }
+                if let Some(berth) = state.berths.get_mut(berth_id) {
+                    berth.occupy(*ship_id);
+                }
+                state.current_time += 1.0;
+            }
+            MCTSAction::AssignCrane { crane_id, ship_id } => {
+                if let Some(crane) = state.cranes.get_mut(crane_id) {
+                    crane.assign(*ship_id);
+                }
+                if let Some(ship) = state.ships.get_mut(ship_id) {
+                    ship.assign_crane(*crane_id);
+                }
+                state.current_time += 1.0;
+            }
+            MCTSAction::UnassignCrane { crane_id } => {
+                if let Some(crane) = state.cranes.get_mut(crane_id) {
+                    if let Some(assigned_ship) = crane.assigned_to {
+                        if let Some(ship) = state.ships.get_mut(&assigned_ship) {
+                            ship.unassign_crane(*crane_id);
+                        }
+                    }
+                    crane.unassign();
+                }
+                state.current_time += 0.5;
+            }
+            MCTSAction::Pass => {
+                state.current_time += 0.5;
+            }
+        }
+
+        // Simple heuristic: process containers for docked ships with assigned cranes
+        let ship_ids: Vec<_> = state.ships.keys().copied().collect();
+        let mut ships_to_remove = Vec::new();
+
+        for ship_id in ship_ids {
+            if let Some(ship) = state.ships.get_mut(&ship_id) {
+                if ship.is_docked() && !ship.assigned_cranes.is_empty() {
+                    let crane_count = ship.assigned_cranes.len() as u32;
+                    let processed = 10 * crane_count;
+                    ship.process_containers(processed);
+
+                    if ship.is_completed() {
+                        // Free cranes assigned to the ship
+                        for crane_id in ship.assigned_cranes.clone() {
+                            if let Some(crane) = state.cranes.get_mut(&crane_id) {
+                                crane.unassign();
+                            }
+                        }
+
+                        if let Some(berth_id) = ship.docked_at {
+                            if let Some(berth) = state.berths.get_mut(&berth_id) {
+                                berth.free();
+                            }
+                        }
+
+                        ships_to_remove.push(ship_id);
+                    }
+                }
+            }
+        }
+
+        if !ships_to_remove.is_empty() {
+            for ship_id in ships_to_remove {
+                state.ships.remove(&ship_id);
+            }
+        }
     }
 }
 

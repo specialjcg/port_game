@@ -66,10 +66,7 @@ impl EventStore for InMemoryEventStore {
 
     fn all_events(&self) -> Vec<DomainEvent> {
         let store = self.events.read().unwrap();
-        store
-            .values()
-            .flat_map(|events| events.clone())
-            .collect()
+        store.values().flat_map(|events| events.clone()).collect()
     }
 }
 
@@ -144,9 +141,7 @@ mod tests {
         let json = store.export_to_json(aggregate_id).unwrap();
 
         let mut new_store = InMemoryEventStore::new();
-        new_store
-            .import_from_json(aggregate_id, &json)
-            .unwrap();
+        new_store.import_from_json(aggregate_id, &json).unwrap();
 
         let loaded = new_store.load(aggregate_id).unwrap();
         assert_eq!(loaded.len(), 1);

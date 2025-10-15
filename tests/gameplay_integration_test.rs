@@ -1,6 +1,6 @@
 //! Tests d'intégration exhaustifs du gameplay du Port Game
 use port_game::domain::value_objects::{BerthId, CraneId, PlayerId};
-use port_game::game::{GameMode, GameSession};
+use port_game::game::{EventGenerator, GameMode, GameSession};
 
 #[cfg(test)]
 mod test {
@@ -85,6 +85,66 @@ mod test {
             session.player_assign_crane(fake_crane, ship_id).is_err(),
             "Assigning non-existent crane should fail"
         );
+    }
+
+    #[test]
+    fn test_ai_docks_waiting_ship() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+        let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+        // Keep randomness out of the equation for determinism
+        session.event_generator = EventGenerator::new(0.0);
+
+        // Create one ship waiting in the harbor
+        session.spawn_ships(1);
+        let waiting_before = session.ai_port.waiting_ships().len();
+        assert_eq!(waiting_before, 1, "AI should start with a waiting ship");
+        assert_eq!(
+            session.ai_port.free_berths().len(),
+            2,
+            "AI should have free berths available"
+        );
+
+        // Let the AI pick an action
+        session.ai_take_turn();
+
+        // After the turn the AI should have docked the ship
+        let waiting_after = session.ai_port.waiting_ships().len();
+        let docked_after = session.ai_port.docked_ships().len();
+
+        assert!(
+            waiting_after < waiting_before,
+            "AI should have fewer waiting ships after its turn (before: {}, after: {})",
+            waiting_before,
+            waiting_after
+        );
+        assert!(
+            docked_after > 0,
+            "AI should have at least one docked ship after acting, found {}",
+            docked_after
+        );
+    }
+
+    #[test]
+    fn test_end_turn_stability() {
+        let player_id = PlayerId::new();
+        let ai_id = PlayerId::new();
+        let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+
+        // Disable randomness for determinism
+        session.event_generator = EventGenerator::new(0.0);
+
+        // Populate with a few ships
+        session.spawn_ships(5);
+
+        for _ in 0..10 {
+            session.process_containers();
+            session.end_turn();
+        }
+
+        // After several turns, game should remain consistent
+        assert!(session.current_turn > 0);
     }
 
     #[test]

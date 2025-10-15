@@ -1,6 +1,6 @@
 // MCTS Performance Benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use port_game::domain::aggregates::Port;
 use port_game::domain::value_objects::PlayerId;
 use port_game::mcts::{MCTSConfig, MCTSEngine};
@@ -18,13 +18,12 @@ fn benchmark_mcts_search(c: &mut Criterion) {
                     num_simulations: num_sims,
                     exploration_constant: 1.41,
                     max_depth: 20,
+                    max_actions_per_turn: 3,
                 };
                 let mut engine = MCTSEngine::new(config);
                 let port = create_test_port();
 
-                b.iter(|| {
-                    engine.search(black_box(&port))
-                });
+                b.iter(|| engine.search(black_box(&port)));
             },
         );
     }
@@ -45,13 +44,12 @@ fn benchmark_mcts_with_ships(c: &mut Criterion) {
                     num_simulations: 100,
                     exploration_constant: 1.41,
                     max_depth: 20,
+                    max_actions_per_turn: 3,
                 };
                 let mut engine = MCTSEngine::new(config);
                 let port = create_port_with_ships(num_ships);
 
-                b.iter(|| {
-                    engine.search(black_box(&port))
-                });
+                b.iter(|| engine.search(black_box(&port)));
             },
         );
     }
@@ -65,9 +63,7 @@ fn benchmark_tree_expansion(c: &mut Criterion) {
         let port = create_test_port();
         tree.init_root(port);
 
-        b.iter(|| {
-            tree.expand(black_box(0))
-        });
+        b.iter(|| tree.expand(black_box(0), 20));
     });
 }
 
@@ -76,11 +72,9 @@ fn benchmark_ucb1_calculation(c: &mut Criterion) {
         let mut tree = port_game::mcts::MCTSTree::new();
         let port = create_test_port();
         tree.init_root(port);
-        tree.expand(0);
+        tree.expand(0, 20);
 
-        b.iter(|| {
-            tree.select_ucb1(black_box(1.41))
-        });
+        b.iter(|| tree.select_ucb1(black_box(1.41)));
     });
 }
 
@@ -93,8 +87,10 @@ fn create_test_port() -> Port {
     use port_game::domain::entities::Ship;
     use port_game::domain::value_objects::ShipId;
 
-    port.ships.insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
-    port.ships.insert(ShipId::new(2), Ship::new(ShipId::new(2), 40, 0.0));
+    port.ships
+        .insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
+    port.ships
+        .insert(ShipId::new(2), Ship::new(ShipId::new(2), 40, 0.0));
 
     port
 }
@@ -109,7 +105,7 @@ fn create_port_with_ships(num_ships: usize) -> Port {
     for i in 0..num_ships {
         port.ships.insert(
             ShipId::new(i),
-            Ship::new(ShipId::new(i), 20 + (i as u32 * 10), i as f64)
+            Ship::new(ShipId::new(i), 20 + (i as u32 * 10), i as f64),
         );
     }
 

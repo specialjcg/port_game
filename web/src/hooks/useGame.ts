@@ -1,34 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { GameState, PortState } from '../types/game';
-import init, { WasmGame } from 'port_game';
+import { WasmGame } from 'port_game';
 
 export function useGame() {
   const [game, setGame] = useState<WasmGame | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Initialize WASM and game
-  useEffect(() => {
-    const initGame = async () => {
-      try {
-        // Initialiser le module WASM
-        await init();
-        // Créer une nouvelle instance du jeu
-        const newGame = new WasmGame();
-        newGame.spawnShips(3);
-        setGame(newGame);
-        updateGameState(newGame);
-        setLoading(false);
-      } catch (err) {
-        setError(`Failed to initialize game: ${err}`);
-        setLoading(false);
-        console.error("Game initialization error:", err);
-      }
-    };
-
-    initGame();
-  }, []);
 
   // Update game state from WASM
   const updateGameState = useCallback((g: any) => {
@@ -54,6 +32,37 @@ export function useGame() {
       setError(`Failed to update game state: ${err}`);
     }
   }, []);
+
+  // Initialize WASM and game
+  useEffect(() => {
+    let isMounted = true;
+    let gameInstance: WasmGame | null = null;
+
+    try {
+      const newGame = new WasmGame();
+      newGame.spawnShips(3);
+      gameInstance = newGame;
+
+      if (isMounted) {
+        setGame(newGame);
+        updateGameState(newGame);
+        setLoading(false);
+      }
+    } catch (err) {
+      setError(`Failed to initialize game: ${err}`);
+      setLoading(false);
+      console.error('Game initialization error:', err);
+    }
+
+    return () => {
+      isMounted = false;
+      if (gameInstance) {
+        // Libère explicitement les ressources wasm
+        gameInstance.free();
+        gameInstance = null;
+      }
+    };
+  }, [updateGameState]);
 
   // Game actions
   const dockShip = useCallback((shipId: number, berthId: number) => {

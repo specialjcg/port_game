@@ -46,7 +46,8 @@ fn test_dock_ship_command_validation() {
     let aggregate_id = Uuid::new_v4();
 
     // Add a ship
-    port.ships.insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
+    port.ships
+        .insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
 
     // Valid dock command
     let result = handle_dock_ship_command(
@@ -77,7 +78,8 @@ fn test_assign_crane_command_validation() {
     let aggregate_id = Uuid::new_v4();
 
     // Setup: Add and dock a ship
-    port.ships.insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
+    port.ships
+        .insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
 
     let dock_events = handle_dock_ship_command(
         &port,
@@ -153,7 +155,8 @@ fn test_event_sourcing_command_flow() {
     let initial_version = port.version();
 
     // Add ship
-    port.ships.insert(ShipId::new(1), Ship::new(ShipId::new(1), 50, 0.0));
+    port.ships
+        .insert(ShipId::new(1), Ship::new(ShipId::new(1), 50, 0.0));
 
     // Execute dock command
     let events = handle_dock_ship_command(
@@ -190,7 +193,8 @@ fn test_command_idempotency() {
     let mut port = Port::new(player_id, 2, 2);
     let aggregate_id = Uuid::new_v4();
 
-    port.ships.insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
+    port.ships
+        .insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
 
     // First dock command - should succeed
     let result1 = handle_dock_ship_command(
@@ -225,8 +229,10 @@ fn test_complex_workflow() {
     let aggregate_id = Uuid::new_v4();
 
     // Add two ships
-    port.ships.insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
-    port.ships.insert(ShipId::new(2), Ship::new(ShipId::new(2), 30, 1.0));
+    port.ships
+        .insert(ShipId::new(1), Ship::new(ShipId::new(1), 30, 0.0));
+    port.ships
+        .insert(ShipId::new(2), Ship::new(ShipId::new(2), 30, 1.0));
 
     // Dock ship 1 to berth 0
     let events = handle_dock_ship_command(

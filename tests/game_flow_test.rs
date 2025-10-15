@@ -221,13 +221,14 @@ fn test_query_port_state() {
 
 mod tests {
     use port_game::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
-    use port_game::game::{GameMode, GameSession};
+    use port_game::game::{EventGenerator, GameMode, GameSession};
 
     #[test]
     fn test_free_completed_ships() {
         let player_id = PlayerId::new();
         let ai_id = PlayerId::new();
         let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+        session.event_generator = EventGenerator::new(0.0);
 
         // 1. Spawn and dock a ship
         session.spawn_ships(1);
@@ -285,6 +286,7 @@ mod tests {
         let player_id = PlayerId::new();
         let ai_id = PlayerId::new();
         let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+        session.event_generator = EventGenerator::new(0.0);
 
         session.spawn_ships(1);
 
@@ -324,6 +326,7 @@ mod tests {
         let player_id = PlayerId::new();
         let ai_id = PlayerId::new();
         let mut session = GameSession::new(GameMode::VersusAI, player_id, ai_id);
+        session.event_generator = EventGenerator::new(0.0);
 
         // 1. Initial state
         let initial_turn = session.current_turn;

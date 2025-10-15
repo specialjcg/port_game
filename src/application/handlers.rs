@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::domain::aggregates::Port;
 use crate::domain::events::{DomainEvent, EventMetadata};
 
-use super::queries::{PortStateView, ShipView, BerthView, CraneView};
+use super::queries::{BerthView, CraneView, PortStateView, ShipView};
 
 pub struct CommandHandler {
     // Will be implemented when we have full game session
@@ -29,7 +29,12 @@ pub fn handle_dock_ship_command(
         return Err(format!("Ship {} not found", ship_id));
     }
 
-    if !port.berths.get(&berth_id).ok_or("Berth not found")?.is_free() {
+    if !port
+        .berths
+        .get(&berth_id)
+        .ok_or("Berth not found")?
+        .is_free()
+    {
         return Err(format!("Berth {} is occupied", berth_id));
     }
 
@@ -57,7 +62,12 @@ pub fn handle_assign_crane_command(
         return Err(format!("Ship {} not found", ship_id));
     }
 
-    if !port.cranes.get(&crane_id).ok_or("Crane not found")?.is_free() {
+    if !port
+        .cranes
+        .get(&crane_id)
+        .ok_or("Crane not found")?
+        .is_free()
+    {
         return Err(format!("Crane {} is already assigned", crane_id));
     }
 

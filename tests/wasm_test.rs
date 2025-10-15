@@ -2,8 +2,8 @@
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 mod wasm_tests {
-    use wasm_bindgen_test::*;
     use port_game::wasm::WasmGame;
+    use wasm_bindgen_test::*;
 
     #[wasm_bindgen_test]
     fn test_wasm_game_creation() {
@@ -135,24 +135,33 @@ mod wasm_tests {
         game.end_turn();
 
         // Vérifications
-        assert_eq!(game.get_current_turn(), initial_turn + 1,
-            "Le tour devrait être incrémenté après endTurn");
+        assert_eq!(
+            game.get_current_turn(),
+            initial_turn + 1,
+            "Le tour devrait être incrémenté après endTurn"
+        );
 
         // Vérifier que le port AI a pris son tour
         let ai_port = game.get_ai_port();
-        assert!(ai_port.is_object(), "Le port AI devrait avoir un état valide");
+        assert!(
+            ai_port.is_object(),
+            "Le port AI devrait avoir un état valide"
+        );
 
         // Vérifier que les événements aléatoires ont été traités
         let active_effects = game.get_active_effects();
-        assert!(active_effects.is_object(), "Les effets actifs devraient être disponibles");
+        assert!(
+            active_effects.is_object(),
+            "Les effets actifs devraient être disponibles"
+        );
     }
 }
 
 // Native Rust tests (always run)
 #[cfg(test)]
 mod native_tests {
-    use port_game::game::{GameMode, GameSession};
     use port_game::domain::value_objects::PlayerId;
+    use port_game::game::{GameMode, GameSession};
 
     #[test]
     fn test_game_session_basic_workflow() {
@@ -203,7 +212,14 @@ mod native_tests {
                 // Ship was removed after completion
                 break;
             }
-            if session.player_port.ships.get(&ship_id).unwrap().containers_remaining == 0 {
+            if session
+                .player_port
+                .ships
+                .get(&ship_id)
+                .unwrap()
+                .containers_remaining
+                == 0
+            {
                 break;
             }
         }
@@ -227,10 +243,13 @@ mod native_tests {
         session.ai_take_turn();
 
         // AI might have docked ships or assigned cranes
-        let final_state = session.ai_port.docked_ships().len() +
-                         session.ai_port.cranes.values()
-                             .filter(|c| c.assigned_to.is_some())
-                             .count();
+        let final_state = session.ai_port.docked_ships().len()
+            + session
+                .ai_port
+                .cranes
+                .values()
+                .filter(|c| c.assigned_to.is_some())
+                .count();
 
         // Some action should have been taken or state should be valid
         assert!(final_state >= initial_docked);
