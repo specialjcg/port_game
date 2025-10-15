@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use crate::domain::aggregates::Port;
 use crate::domain::events::{DomainEvent, EventMetadata};
-use crate::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
+#[cfg(test)]
+use crate::domain::value_objects::{BerthId, CraneId};
+use crate::domain::value_objects::{PlayerId, ShipId};
 use crate::infrastructure::{EventStore, InMemoryEventStore};
 use crate::mcts::{MCTSConfig, MCTSEngine};
 
@@ -15,9 +17,9 @@ pub use events::{ActiveEvent, EventGenerator, RandomEvent};
 /// Game mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameMode {
-    VersusAI,  // Player vs AI MCTS
-    Tutorial,  // Learning mode
-    Sandbox,   // Free play
+    VersusAI, // Player vs AI MCTS
+    Tutorial, // Learning mode
+    Sandbox,  // Free play
 }
 
 /// Game session - Main game state manager
@@ -193,7 +195,10 @@ impl GameSession {
                     let remaining = ship.containers_remaining - processed;
 
                     let event = DomainEvent::ContainerProcessed {
-                        metadata: EventMetadata::new(self.session_id, self.player_port.version() + 1),
+                        metadata: EventMetadata::new(
+                            self.session_id,
+                            self.player_port.version() + 1,
+                        ),
                         crane_id: ship.assigned_cranes[0], // Representative crane
                         ship_id: ship.id,
                         containers_remaining: remaining,
@@ -340,10 +345,14 @@ impl GameSession {
         // Apply active event effects
         for active in &self.active_events {
             match &active.event {
-                RandomEvent::Storm { efficiency_penalty, .. } => {
+                RandomEvent::Storm {
+                    efficiency_penalty, ..
+                } => {
                     self.crane_efficiency_modifier *= 1.0 - efficiency_penalty;
                 }
-                RandomEvent::GoodWeather { efficiency_bonus, .. } => {
+                RandomEvent::GoodWeather {
+                    efficiency_bonus, ..
+                } => {
                     self.crane_efficiency_modifier *= 1.0 + efficiency_bonus;
                 }
                 _ => {}
@@ -387,11 +396,12 @@ impl GameSession {
     /// Free completed ships and their assigned cranes
     pub fn free_completed_ships(&mut self) {
         // Ne récupérer que les navires qui sont complètement déchargés
-        let completed_ships: Vec<_> = self.player_port.ships
+        let completed_ships: Vec<_> = self
+            .player_port
+            .ships
             .iter()
             .filter(|(_, ship)| {
-                ship.is_docked() &&
-                ship.containers_remaining == 0  // Uniquement les navires complètement déchargés
+                ship.is_docked() && ship.containers_remaining == 0 // Uniquement les navires complètement déchargés
             })
             .map(|(id, ship)| (*id, ship.docked_at.unwrap(), ship.assigned_cranes.clone()))
             .collect();
@@ -478,7 +488,9 @@ mod tests {
 
         // 2. Dock it and assign a crane
         session.player_dock_ship(ship_id, berth_id).unwrap();
-        session.player_assign_crane(CraneId::new(0), ship_id).unwrap();
+        session
+            .player_assign_crane(CraneId::new(0), ship_id)
+            .unwrap();
 
         // 3. Empty its containers
         let ship = session.player_port.ships.get_mut(&ship_id).unwrap();

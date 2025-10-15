@@ -1,13 +1,12 @@
 // Monte Carlo Tree Search engine
 // Core AI for the game
 
-pub mod tree;
-pub mod simulation;
 pub mod actions;
-
-use rand::Rng;
+pub mod simulation;
+pub mod tree;
 
 use crate::domain::aggregates::Port;
+use crate::utils::random;
 
 pub use actions::MCTSAction;
 pub use tree::{MCTSNode, MCTSTree};
@@ -77,14 +76,13 @@ impl MCTSEngine {
 
     fn simulate(&self, node_id: usize) -> f64 {
         // Simple random playout simulation
-        let mut rng = rand::thread_rng();
         let state = self.tree.get_state(node_id);
 
         // Heuristic: score based on containers processed and waiting time
         let mut score = state.calculate_score() as f64;
 
         // Add random exploration noise
-        score += rng.gen_range(-10.0..10.0);
+        score += random::range_f64(-10.0, 10.0);
 
         score
     }

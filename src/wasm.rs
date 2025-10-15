@@ -8,8 +8,6 @@ use wasm_bindgen::prelude::*;
 use crate::domain::value_objects::{BerthId, CraneId, PlayerId, ShipId};
 #[cfg(feature = "wasm")]
 use crate::game::{GameMode, GameSession};
-#[cfg(feature = "wasm")]
-use crate::application::queries::PortStateView;
 
 /// JavaScript console logging
 #[cfg(feature = "wasm")]
@@ -100,7 +98,10 @@ impl WasmGame {
     #[wasm_bindgen(js_name = "processContainers")]
     pub fn process_containers(&mut self) {
         // Collecter d'abord les informations nécessaires
-        let completed_ships: Vec<_> = self.session.player_port.ships
+        let completed_ships: Vec<_> = self
+            .session
+            .player_port
+            .ships
             .iter()
             .filter(|(_, ship)| ship.is_docked() && ship.containers_remaining == 0)
             .map(|(id, ship)| (*id, ship.docked_at.unwrap(), ship.assigned_cranes.clone()))

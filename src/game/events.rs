@@ -1,8 +1,8 @@
 // Random game events system
 // Adds unpredictability and challenge to the game
 
-use rand::Rng;
 use crate::domain::value_objects::CraneId;
+use crate::utils::random;
 
 /// Random events that can occur during gameplay
 #[derive(Debug, Clone, PartialEq)]
@@ -20,14 +20,10 @@ pub enum RandomEvent {
     },
 
     /// Customs inspection - random ship delayed
-    CustomsInspection {
-        delay_turns: u32,
-    },
+    CustomsInspection { delay_turns: u32 },
 
     /// Rush hour - multiple ships arrive
-    RushHour {
-        extra_ships: usize,
-    },
+    RushHour { extra_ships: usize },
 
     /// Good weather - bonus efficiency
     GoodWeather {
@@ -39,18 +35,23 @@ pub enum RandomEvent {
 impl RandomEvent {
     pub fn description(&self) -> String {
         match self {
-            RandomEvent::Storm { duration_turns, efficiency_penalty } => {
+            RandomEvent::Storm {
+                duration_turns,
+                efficiency_penalty,
+            } => {
                 format!(
                     "🌊 STORM! Crane efficiency reduced by {:.0}% for {} turns",
                     efficiency_penalty * 100.0,
                     duration_turns
                 )
             }
-            RandomEvent::CraneBreakdown { crane_id, duration_turns } => {
+            RandomEvent::CraneBreakdown {
+                crane_id,
+                duration_turns,
+            } => {
                 format!(
                     "🔧 BREAKDOWN! Crane #{} is out of service for {} turns",
-                    crane_id.0,
-                    duration_turns
+                    crane_id.0, duration_turns
                 )
             }
             RandomEvent::CustomsInspection { delay_turns } => {
@@ -60,12 +61,12 @@ impl RandomEvent {
                 )
             }
             RandomEvent::RushHour { extra_ships } => {
-                format!(
-                    "⚡ RUSH HOUR! {} additional ships arriving!",
-                    extra_ships
-                )
+                format!("⚡ RUSH HOUR! {} additional ships arriving!", extra_ships)
             }
-            RandomEvent::GoodWeather { duration_turns, efficiency_bonus } => {
+            RandomEvent::GoodWeather {
+                duration_turns,
+                efficiency_bonus,
+            } => {
                 format!(
                     "☀️ GOOD WEATHER! Crane efficiency increased by {:.0}% for {} turns",
                     efficiency_bonus * 100.0,
@@ -90,34 +91,32 @@ impl EventGenerator {
 
     /// Generate a random event (or None)
     pub fn generate(&self) -> Option<RandomEvent> {
-        let mut rng = rand::thread_rng();
-
         // Check if event should occur
-        if rng.gen::<f64>() > self.probability {
+        if !random::hit(self.probability) {
             return None;
         }
 
         // Choose event type
-        let event_type = rng.gen_range(0..5);
+        let event_type = random::range_usize(0, 5);
 
         match event_type {
             0 => Some(RandomEvent::Storm {
-                duration_turns: rng.gen_range(1..=3),
-                efficiency_penalty: rng.gen_range(0.3..=0.6),
+                duration_turns: random::range_u32_inclusive(1, 3),
+                efficiency_penalty: random::range_f64_inclusive(0.3, 0.6),
             }),
             1 => Some(RandomEvent::CraneBreakdown {
-                crane_id: CraneId::new(rng.gen_range(0..2)), // Assume 2 cranes
-                duration_turns: rng.gen_range(1..=2),
+                crane_id: CraneId::new(random::range_usize(0, 2)), // Assume 2 cranes
+                duration_turns: random::range_u32_inclusive(1, 2),
             }),
             2 => Some(RandomEvent::CustomsInspection {
-                delay_turns: rng.gen_range(1..=2),
+                delay_turns: random::range_u32_inclusive(1, 2),
             }),
             3 => Some(RandomEvent::RushHour {
-                extra_ships: rng.gen_range(1..=3),
+                extra_ships: random::range_usize_inclusive(1, 3),
             }),
             4 => Some(RandomEvent::GoodWeather {
-                duration_turns: rng.gen_range(1..=2),
-                efficiency_bonus: rng.gen_range(0.2..=0.4),
+                duration_turns: random::range_u32_inclusive(1, 2),
+                efficiency_bonus: random::range_f64_inclusive(0.2, 0.4),
             }),
             _ => None,
         }

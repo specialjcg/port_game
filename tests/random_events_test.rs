@@ -1,7 +1,7 @@
 // Integration tests for random events system
 
-use port_game::game::{ActiveEvent, EventGenerator, GameMode, GameSession, RandomEvent};
 use port_game::domain::value_objects::{CraneId, PlayerId};
+use port_game::game::{ActiveEvent, EventGenerator, GameMode, GameSession, RandomEvent};
 
 #[test]
 fn test_event_generator_creates_events() {
@@ -197,6 +197,9 @@ fn test_container_processing_with_modified_efficiency() {
     session.player_dock_ship(ship_id, berth_id).unwrap();
     session.player_assign_crane(crane_id, ship_id).unwrap();
 
+    // Désactiver les événements aléatoires pour garder le test déterministe
+    session.event_generator = EventGenerator::new(0.0);
+
     // Ajouter un événement de tempête qui réduit l'efficacité de 50%
     let storm = RandomEvent::Storm {
         duration_turns: 2,
@@ -207,14 +210,27 @@ fn test_container_processing_with_modified_efficiency() {
     // S'assurer que le modificateur est appliqué
     session.process_random_events();
 
-    let initial_containers = session.player_port.ships.get(&ship_id).unwrap().containers_remaining;
+    let initial_containers = session
+        .player_port
+        .ships
+        .get(&ship_id)
+        .unwrap()
+        .containers_remaining;
 
     // Traiter les conteneurs avec l'efficacité réduite
     session.process_containers();
 
-    let final_containers = session.player_port.ships.get(&ship_id).unwrap().containers_remaining;
+    let final_containers = session
+        .player_port
+        .ships
+        .get(&ship_id)
+        .unwrap()
+        .containers_remaining;
     let processed = initial_containers - final_containers;
 
     // Une grue traite normalement 10 conteneurs, avec 50% d'efficacité, elle devrait en traiter 5
-    assert_eq!(processed, 5, "Devrait traiter 5 conteneurs avec l'efficacité réduite de 50%");
+    assert_eq!(
+        processed, 5,
+        "Devrait traiter 5 conteneurs avec l'efficacité réduite de 50%"
+    );
 }

@@ -1,11 +1,11 @@
 // Aggregates - DDD pattern for consistency boundaries
 // Port is the main aggregate root
 
-use std::collections::HashMap;
-use uuid::Uuid;
 use super::entities::{Berth, Crane, Ship};
 use super::events::{DomainEvent, EventMetadata};
 use super::value_objects::{BerthId, CraneId, PlayerId, ShipId};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Port aggregate - Manages ships, berths, and cranes
 /// This is the consistency boundary and event source
@@ -130,18 +130,12 @@ impl Port {
 
     /// Get waiting ships (not docked yet)
     pub fn waiting_ships(&self) -> Vec<&Ship> {
-        self.ships
-            .values()
-            .filter(|s| !s.is_docked())
-            .collect()
+        self.ships.values().filter(|s| !s.is_docked()).collect()
     }
 
     /// Get docked ships
     pub fn docked_ships(&self) -> Vec<&Ship> {
-        self.ships
-            .values()
-            .filter(|s| s.is_docked())
-            .collect()
+        self.ships.values().filter(|s| s.is_docked()).collect()
     }
 
     /// Get free berths
@@ -156,20 +150,13 @@ impl Port {
 
     /// Calculate current score (simple heuristic)
     pub fn calculate_score(&self) -> i32 {
-        let mut score = 0;
+        let waiting_penalty: i32 = self
+            .waiting_ships()
+            .into_iter()
+            .map(|ship| (ship.waiting_time(self.current_time) * 5.0) as i32)
+            .sum();
 
-        // Positive: containers processed
-        for ship in self.ships.values() {
-            score += (ship.containers - ship.containers_remaining) as i32 * 10;
-        }
-
-        // Negative: waiting time penalty
-        for ship in self.waiting_ships() {
-            let wait_time = ship.waiting_time(self.current_time);
-            score -= (wait_time * 5.0) as i32;
-        }
-
-        score
+        self.score - waiting_penalty
     }
 
     pub fn version(&self) -> u64 {
